@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">ROC OpenCode</string>
+    <string name="voice_listen">Start listening</string>
+    <string name="voice_stop">Stop listening</string>
+    <string name="notification_channel">OpenCode Notifications</string>
+</resources>
