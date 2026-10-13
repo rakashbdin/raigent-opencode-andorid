@@ -5,6 +5,7 @@ import android.webkit.WebView
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Mic
@@ -32,7 +33,9 @@ fun AppShell(webView: WebView, context: Context) {
     Box(modifier = Modifier.fillMaxSize()) {
         AndroidView(
             factory = { webView },
-            modifier = Modifier.fillMaxSize()
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(bottom = 80.dp)
         )
 
         FloatingActionButton(
@@ -55,7 +58,8 @@ fun AppShell(webView: WebView, context: Context) {
             },
             modifier = Modifier
                 .align(Alignment.BottomEnd)
-                .padding(16.dp),
+                .padding(16.dp)
+                .size(56.dp),
             shape = CircleShape,
             containerColor = if (isListening) Color.Red else MaterialTheme.colorScheme.primary
         ) {
