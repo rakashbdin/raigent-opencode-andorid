@@ -22,7 +22,7 @@ jobs:
         uses: android-actions/setup-android@v3
 
       - name: Install SDK components and accept licenses
-        run</longcat_arg_key>
+        run: |
           sdkmanager --install "platform-tools" "platforms;android-35" "build-tools;35.0.0"
           yes | sdkmanager --licenses
 
