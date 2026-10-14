@@ -4,6 +4,8 @@ import android.annotation.SuppressLint
 import android.content.Intent
 import android.net.Uri
 import android.os.Bundle
+import android.os.Handler
+import android.os.Looper
 import android.view.ViewGroup
 import android.webkit.ValueCallback
 import android.webkit.WebChromeClient
@@ -17,9 +19,12 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.systemBars
+import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
@@ -27,11 +32,11 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import com.roc.opencode.bridge.JsBridge
@@ -44,13 +49,16 @@ class MainActivity : ComponentActivity() {
     private lateinit var jsBridge: JsBridge
     private var filePathCallback: ValueCallback<Array<Uri>>? = null
 
-    @Deprecated("Deprecated in Java")
-    override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
-        super.onActivityResult(requestCode, resultCode, data)
-        filePathCallback?.onReceiveValue(
-            if (resultCode == RESULT_OK && data?.data != null) arrayOf(data.data!!) else null
-        )
-        filePathCallback = null
+    // Shared state that WebView callbacks can update
+    private var isLoading by mutableStateOf(true)
+    private var errorMessage by mutableStateOf<String?>(null)
+
+    private val handler = Handler(Looper.getMainLooper())
+    private val timeoutRunnable = Runnable {
+        if (isLoading) {
+            errorMessage = "Cannot connect to server.\nMake sure OpenCode is running."
+            isLoading = false
+        }
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -65,16 +73,27 @@ class MainActivity : ComponentActivity() {
                     MainScreen(
                         webView = webView,
                         context = this@MainActivity,
-                        onPageLoaded = { isLoading = false },
-                        onError = { isLoading = false; errorMessage = it }
+                        isLoading = isLoading,
+                        errorMessage = errorMessage
                     )
                 }
             }
         }
+
+        // 15-second timeout
+        handler.postDelayed(timeoutRunnable, 15000)
     }
 
-    private var isLoading by mutableStateOf(true)
-    private var errorMessage by mutableStateOf<String?>(null)
+    @Deprecated("Deprecated in Java")
+    override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
+        super.onActivityResult(requestCode, resultCode, data)
+        if (requestCode == 101) {
+            filePathCallback?.onReceiveValue(
+                if (resultCode == RESULT_OK && data?.data != null) arrayOf(data.data!!) else null
+            )
+            filePathCallback = null
+        }
+    }
 
     @SuppressLint("SetJavaScriptEnabled")
     private fun createWebView(): WebView {
@@ -109,10 +128,11 @@ class MainActivity : ComponentActivity() {
                 fileChooserParams: FileChooserParams?
             ): Boolean {
                 this@MainActivity.filePathCallback = filePathCallback
-                val intent = fileChooserParams?.createIntent() ?: Intent(Intent.ACTION_GET_CONTENT).apply {
-                    addCategory(Intent.CATEGORY_OPENABLE)
-                    type = "*/*"
-                }
+                val intent = fileChooserParams?.createIntent()
+                    ?: Intent(Intent.ACTION_GET_CONTENT).apply {
+                        addCategory(Intent.CATEGORY_OPENABLE)
+                        type = "*/*"
+                    }
                 startActivityForResult(intent, 101)
                 return true
             }
@@ -120,6 +140,11 @@ class MainActivity : ComponentActivity() {
 
         webView.webViewClient = object : WebViewClient() {
             override fun onPageFinished(view: WebView?, url: String?) {
+                handler.removeCallbacks(timeoutRunnable)
+                isLoading = false
+                errorMessage = null
+
+                // Inject viewport meta tag
                 view?.evaluateJavascript(
                     "(function() {" +
                     "  var meta = document.querySelector('meta[name=viewport]');" +
@@ -140,7 +165,9 @@ class MainActivity : ComponentActivity() {
                 error: WebResourceError?
             ) {
                 if (request?.isForMainFrame == true) {
-                    errorMessage = "Cannot connect to OpenCode server. Make sure it's running."
+                    handler.removeCallbacks(timeoutRunnable)
+                    isLoading = false
+                    errorMessage = "Cannot connect to server.\nMake sure OpenCode is running."
                 }
             }
         }
@@ -161,6 +188,7 @@ class MainActivity : ComponentActivity() {
     }
 
     override fun onDestroy() {
+        handler.removeCallbacks(timeoutRunnable)
         if (::webView.isInitialized) {
             webView.destroy()
         }
@@ -172,27 +200,27 @@ class MainActivity : ComponentActivity() {
 fun MainScreen(
     webView: WebView,
     context: android.content.Context,
-    onPageLoaded: () -> Unit,
-    onError: (String) -> Unit
+    isLoading: Boolean,
+    errorMessage: String?
 ) {
-    var isLoading by remember { mutableStateOf(true) }
-    var errorMessage by remember { mutableStateOf<String?>(null) }
-
     Box(modifier = Modifier.fillMaxSize()) {
         AndroidView(
             factory = { webView },
             modifier = Modifier.fillMaxSize()
         )
 
+        // Loading bar at top, below status bar
         if (isLoading && errorMessage == null) {
             LinearProgressIndicator(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .align(Alignment.TopCenter),
+                    .align(Alignment.TopCenter)
+                    .windowInsetsPadding(WindowInsets.systemBars),
                 color = MaterialTheme.colorScheme.primary,
             )
         }
 
+        // Error message
         errorMessage?.let { msg ->
             Column(
                 modifier = Modifier
@@ -204,7 +232,7 @@ fun MainScreen(
                 Text(
                     text = msg,
                     color = Color.Red,
-                    textAlign = androidx.compose.ui.text.style.TextAlign.Center
+                    textAlign = TextAlign.Center
                 )
             }
         }
